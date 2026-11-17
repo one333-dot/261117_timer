@@ -87,7 +87,7 @@
     <span class="status" id="status"></span>
   </div>
 
-  <p class="note">번역은 Claude가 수행합니다. 처음 번역할 때 사용 동의 창이 뜰 수 있습니다. 기계 번역이므로 중요한 문서는 사람이 한 번 더 확인하세요.</p>
+  <p class="note" id="note">기계 번역이므로 중요한 문서는 사람이 한 번 더 확인하세요.</p>
 </main>
 
 <script>
@@ -140,6 +140,54 @@ copyBtn.onclick=async()=>{
 let sampleFn=null, ctrl=null;
 const ready = (window.claude && claude.use) ? claude.use("sample").then(s=>{sampleFn=s; return s;}).catch(()=>null) : Promise.resolve(null);
 
+const NOTE_API = "번역 엔진: MyMemory 무료 번역 API (가입 없이 IP당 하루 약 5,000자까지 사용 가능). 입력한 텍스트는 MyMemory 서버로 전송됩니다. 기계 번역이므로 중요한 문서는 사람이 한 번 더 확인하세요.";
+const NOTE_CLAUDE = "번역 엔진: Claude. 처음 번역할 때 사용 동의 창이 뜰 수 있습니다. 기계 번역이므로 중요한 문서는 사람이 한 번 더 확인하세요.";
+ready.then(s=>{
+  $("note").textContent = s ? NOTE_CLAUDE : NOTE_API;
+  if(!s){ $("tone").disabled=true; $("tone").title="문체 선택은 Claude 엔진에서만 사용할 수 있습니다"; }
+});
+
+// MyMemory: 요청당 최대 500자 → 450자 단위로 나눠 보냄
+function chunkLine(line, max=450){
+  if(line.length<=max) return [line];
+  const parts = line.match(/[^.!?。！？]+[.!?。！？]*\s*/g) || [line];
+  const out=[]; let cur="";
+  for(let p of parts){
+    while(p.length>max){ if(cur){out.push(cur);cur="";} out.push(p.slice(0,max)); p=p.slice(max); }
+    if((cur+p).length>max){ out.push(cur); cur=p; } else cur+=p;
+  }
+  if(cur) out.push(cur);
+  return out;
+}
+async function mmGet(q, pair, signal){
+  const url="https://api.mymemory.translated.net/get?q="+encodeURIComponent(q)+"&langpair="+encodeURIComponent(pair);
+  const r=await fetch(url,{signal});
+  if(!r.ok) throw new Error("번역 서버 응답 오류 ("+r.status+")");
+  const j=await r.json();
+  const t=(j.responseData&&j.responseData.translatedText)||"";
+  if(String(j.responseStatus)!=="200" || /^MYMEMORY WARNING/i.test(t)){
+    if(/ALL AVAILABLE FREE TRANSLATIONS/i.test(t)) throw new Error("오늘 무료 번역 사용량을 모두 썼습니다. 내일 다시 시도해 주세요.");
+    throw new Error(j.responseDetails||t||"번역 실패");
+  }
+  return {text:t, detected:(j.responseData&&j.responseData.detectedLanguage)||""};
+}
+async function translateApi(text, signal){
+  const pair=(src.value==="auto"?"autodetect":src.value)+"|"+tgt.value;
+  const lines=text.split("\n"); const out=[]; let det="";
+  for(const line of lines){
+    if(!line.trim()){ out.push(line); continue; }
+    const pieces=[];
+    for(const c of chunkLine(line)){
+      const r=await mmGet(c.trim(), pair, signal);
+      if(!det && r.detected) det=r.detected;
+      pieces.push(r.text);
+    }
+    out.push(pieces.join(" "));
+    setOutput(out.join("\n"));
+  }
+  return {body:out.join("\n"), det};
+}
+
 const TONE = {neutral:"원문의 어조를 그대로 유지", formal:"격식 있고 정중한 문체", casual:"자연스럽고 편안한 구어체"};
 
 function buildPrompt(text){
@@ -167,9 +215,21 @@ async function translate(){
   if(!text){ setStatus("번역할 텍스트를 입력하세요.",true); input.focus(); return; }
   setStatus("연결 중…");
   const s = sampleFn || await ready;
-  if(!s){ setStatus("이 화면에서는 번역 기능을 사용할 수 없습니다. claude.ai에서 페이지를 열어 주세요.",true); return; }
   ctrl=new AbortController();
   go.disabled=true; stop.classList.remove("hidden"); setStatus("번역 중…"); detected.textContent="";
+  if(!s){
+    try{
+      setOutput("");
+      const r=await translateApi(text, ctrl.signal);
+      setOutput(r.body.trim());
+      if(src.value==="auto" && r.det){ const base=NAME[r.det]||NAME[r.det.split("-")[0]]||r.det; detected.textContent=`감지된 언어: ${base}`; }
+      setStatus("");
+    }catch(e){
+      if(e && e.name==="AbortError") setStatus("중지했습니다.");
+      else setStatus((e&&e.message)||"번역 중 오류가 발생했습니다.",true);
+    }finally{ go.disabled=false; stop.classList.add("hidden"); ctrl=null; }
+    return;
+  }
   try{
     const res = await s(buildPrompt(text),{
       modelTier:"quick", signal:ctrl.signal,

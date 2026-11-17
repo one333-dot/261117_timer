@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포모도로 타이머</title>
+<style>
+  :root{
+    --bg:#fbf7f4; --card:#ffffff; --ink:#2a2421; --muted:#8a7f79; --line:#ece4de;
+    --accent:#d9534f; --accent-soft:#fbe3e1;
+  }
+  body.short{ --accent:#2f9e77; --accent-soft:#dcf2ea; }
+  body.long { --accent:#3b7dd8; --accent-soft:#e0ebfa; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1b1816; --card:#25211e; --ink:#f1ebe6; --muted:#9e948d; --line:#37302b; --accent-soft:#3a2523; }
+    body.short{ --accent-soft:#1f352d; }
+    body.long { --accent-soft:#1f2a3b; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+    font-family:"Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:24px;transition:background .4s}
+  .wrap{width:100%;max-width:420px;text-align:center}
+  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px;margin-bottom:28px}
+  .tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:10px 0;border-radius:999px;font:inherit;font-size:14px;cursor:pointer;transition:.2s}
+  .tabs button.on{background:var(--accent);color:#fff;font-weight:600}
+  .ring{position:relative;width:280px;height:280px;margin:0 auto 28px}
+  .ring svg{transform:rotate(-90deg)}
+  .ring circle{fill:none;stroke-width:10}
+  .track{stroke:var(--accent-soft)}
+  .bar{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .3s linear, stroke .4s}
+  .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .time{font-size:68px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  .label{color:var(--muted);font-size:14px;margin-top:4px}
+  .controls{display:flex;justify-content:center;gap:12px;margin-bottom:24px}
+  .btn{border:0;font:inherit;cursor:pointer;border-radius:14px;transition:transform .1s}
+  .btn:active{transform:scale(.97)}
+  .main{background:var(--accent);color:#fff;font-size:18px;font-weight:700;padding:16px 48px;min-width:170px}
+  .sub{background:var(--card);color:var(--ink);border:1px solid var(--line);padding:16px 18px;font-size:15px}
+  .dots{display:flex;justify-content:center;gap:8px;margin-bottom:8px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--line)}
+  .dot.done{background:var(--accent)}
+  .count{color:var(--muted);font-size:13px;margin-bottom:24px}
+  details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 16px;text-align:left}
+  summary{cursor:pointer;padding:12px 0;font-size:14px;color:var(--muted)}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:14px}
+  .row input[type=number]{width:72px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;text-align:right}
+  .row input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:var(--ink);color:var(--bg);padding:12px 20px;border-radius:12px;font-size:14px;transition:.3s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" role="tablist">
+    <button data-mode="work" class="on">집중</button>
+    <button data-mode="short">짧은 휴식</button>
+    <button data-mode="long">긴 휴식</button>
+  </div>
+
+  <div class="ring">
+    <svg width="280" height="280" viewBox="0 0 280 280">
+      <circle class="track" cx="140" cy="140" r="128"/>
+      <circle class="bar" id="bar" cx="140" cy="140" r="128"/>
+    </svg>
+    <div class="center">
+      <div class="time" id="time">25:00</div>
+      <div class="label" id="label">집중할 시간이에요</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn sub" id="reset" title="초기화">↺ 초기화</button>
+    <button class="btn main" id="toggle">시작</button>
+    <button class="btn sub" id="skip" title="다음 단계로">건너뛰기 ⏭</button>
+  </div>
+
+  <div class="dots" id="dots"></div>
+  <div class="count" id="count">완료한 포모도로 0개</div>
+
+  <details>
+    <summary>⚙️ 설정</summary>
+    <div class="row"><span>집중 시간 (분)</span><input type="number" id="s-work" min="1" max="120"></div>
+    <div class="row"><span>짧은 휴식 (분)</span><input type="number" id="s-short" min="1" max="60"></div>
+    <div class="row"><span>긴 휴식 (분)</span><input type="number" id="s-long" min="1" max="60"></div>
+    <div class="row"><span>긴 휴식까지 포모도로 수</span><input type="number" id="s-every" min="2" max="10"></div>
+    <div class="row"><span>다음 단계 자동 시작</span><input type="checkbox" id="s-auto"></div>
+    <div class="row"><span>알림음</span><input type="checkbox" id="s-sound"></div>
+  </details>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const LABELS = { work:"집중할 시간이에요", short:"잠깐 쉬어가요", long:"푹 쉬어가요" };
+  const NAMES  = { work:"집중", short:"짧은 휴식", long:"긴 휴식" };
+  const defaults = { work:25, short:5, long:15, every:4, auto:false, sound:true };
+  let cfg = Object.assign({}, defaults);
+  try { const s = JSON.parse(localStorage.getItem("pomo-cfg")); if (s) cfg = Object.assign(cfg, s); } catch(e){}
+  const save = () => { try { localStorage.setItem("pomo-cfg", JSON.stringify(cfg)); } catch(e){} };
+
+  const $ = id => document.getElementById(id);
+  const bar = $("bar"), R = 128, C = 2*Math.PI*R;
+  bar.style.strokeDasharray = C;
+
+  let mode = "work", total = cfg.work*60, remaining = total, running = false, endAt = 0, timer = null, done = 0, audioCtx = null;
+
+  function fmt(s){ s = Math.max(0, Math.ceil(s)); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }
+  function render(){
+    $("time").textContent = fmt(remaining);
+    bar.style.strokeDashoffset = C * (1 - remaining/total);
+    $("toggle").textContent = running ? "일시정지" : (remaining < total ? "계속" : "시작");
+    document.title = (running ? fmt(remaining)+" · " : "") + NAMES[mode] + " | 포모도로";
+    const dots = $("dots"); dots.innerHTML = "";
+    const inCycle = done % cfg.every;
+    for (let i=0;i<cfg.every;i++){ const d=document.createElement("div"); d.className="dot"+(i<inCycle?" done":""); dots.appendChild(d); }
+    $("count").textContent = "완료한 포모도로 " + done + "개";
+  }
+  function setMode(m, keepRunning){
+    mode = m; total = cfg[m]*60; remaining = total;
+    document.body.className = m === "work" ? "" : m;
+    $("label").textContent = LABELS[m];
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.mode===m));
+    stop();
+    if (keepRunning) start();
+    render();
+  }
+  function tick(){
+    remaining = (endAt - Date.now())/1000;
+    if (remaining <= 0){ remaining = 0; render(); finish(); return; }
+    render();
+  }
+  function start(){ if (running) return; running = true; endAt = Date.now() + remaining*1000; timer = setInterval(tick, 250); render(); }
+  function stop(){ running = false; clearInterval(timer); timer = null; }
+  function next(){
+    if (mode === "work"){ done++; return (done % cfg.every === 0) ? "long" : "short"; }
+    return "work";
+  }
+  function finish(){
+    stop();
+    const prev = mode, nm = next();
+    if (cfg.sound) beep();
+    toast(NAMES[prev] + " 끝! 다음은 " + NAMES[nm] + "이에요");
+    setMode(nm, cfg.auto);
+  }
+  function ensureAudio(){
+    try { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if (audioCtx.state==="suspended") audioCtx.resume(); } catch(e){}
+  }
+  function beep(){
+    if (!audioCtx) return;
+    try {
+      [0, 0.25, 0.5].forEach((t,i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type="sine"; o.frequency.value = i===2 ? 1046 : 784;
+        g.gain.setValueAtTime(0.0001, audioCtx.currentTime+t);
+        g.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime+t+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+t+0.22);
+        o.connect(g).connect(audioCtx.destination); o.start(audioCtx.currentTime+t); o.stop(audioCtx.currentTime+t+0.25);
+      });
+    } catch(e){}
+  }
+  let tt;
+  function toast(msg){ const el=$("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove("show"),3500); }
+
+  $("toggle").onclick = () => { ensureAudio(); running ? (stop(), remaining=(endAt-Date.now())/1000, render()) : start(); };
+  $("reset").onclick = () => { stop(); remaining = total; render(); };
+  $("skip").onclick = () => { ensureAudio(); stop(); setMode(next(), cfg.auto); };
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => setMode(b.dataset.mode, false));
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT") return;
+    if (e.code === "Space"){ e.preventDefault(); $("toggle").click(); }
+  });
+
+  // 설정
+  const map = { work:"s-work", short:"s-short", long:"s-long", every:"s-every" };
+  Object.entries(map).forEach(([k,id]) => {
+    const el = $(id); el.value = cfg[k];
+    el.onchange = () => {
+      const v = Math.round(Number(el.value));
+      if (!v || v < Number(el.min)) { el.value = cfg[k]; return; }
+      cfg[k] = Math.min(v, Number(el.max)); el.value = cfg[k]; save();
+      if (k === mode && !running && remaining === total) setMode(mode, false); else render();
+    };
+  });
+  $("s-auto").checked = cfg.auto;  $("s-auto").onchange  = e => { cfg.auto = e.target.checked; save(); };
+  $("s-sound").checked = cfg.sound; $("s-sound").onchange = e => { cfg.sound = e.target.checked; save(); if (cfg.sound) ensureAudio(); };
+
+  setMode("work", false);
+})();
+</script>
+</body>
+</html>

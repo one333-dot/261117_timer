@@ -2,14 +2,16 @@
 
 브라우저에서 동작하는 한 페이지짜리 텍스트 번역기입니다.
 
+바로 사용하기: https://one333-dot.github.io/261117_timer/translator/
+
 ## 기능
 - 16개 언어 지원(원문 언어 자동 감지 포함)
 - 원문/번역 언어 바꾸기(⇄)
-- 문체 선택: 기본 / 격식체 / 구어체
 - 실시간 결과 표시, 복사·중지·지우기
 - Ctrl/⌘ + Enter로 번역
 
-## 주의
-번역은 claude.ai 아티팩트 런타임의 `sample` 기능(`claude.use("sample")`)으로 Claude를 호출합니다.
-따라서 `index.html`을 GitHub Pages 등 claude.ai 밖에서 열면 화면은 보이지만 번역은 동작하지 않습니다.
-외부에서 쓰려면 번역 API(예: Claude API, Papago, DeepL 등) 호출 코드로 바꿔야 합니다.
+## 번역 엔진
+- 일반 웹(GitHub Pages 등): [MyMemory 무료 번역 API](https://mymemory.translated.net/doc/spec.php)를 사용합니다. 가입이나 API 키가 필요 없으며, 익명 무료 사용량은 하루 5,000자입니다([사용 한도](https://mymemory.translated.net/doc/usagelimits.php)). 입력한 텍스트는 MyMemory 서버로 전송됩니다.
+- claude.ai 아티팩트 안에서 열면: Claude가 번역하며, 문체(기본/격식체/구어체) 선택을 쓸 수 있습니다.
+
+기계 번역이므로 중요한 문서는 사람이 한 번 더 확인하세요.
